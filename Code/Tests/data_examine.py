@@ -8,7 +8,6 @@ if __name__ == '__main__':
 else:
     from .download_data import download_data
 
-
 download_data()
 
 fname = "Data/stringer_spontaneous.npy"
