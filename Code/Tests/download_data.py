@@ -7,11 +7,11 @@ import numpy as np
 data = {
     'Orientation': {
         'url': "https://osf.io/ny4ut/download",
-        'file': "stringer_orientations.npy"
+        'file': "Data/stringer_orientations.npy"
     },
     'Spontaneous': {
         'url': "https://osf.io/dpqaj/download",
-        'file': "stringer_spontaneous.npy"
+        'file': "Data/stringer_spontaneous.npy"
     }
 }
 
@@ -28,5 +28,5 @@ for dataset in data.keys():
                 print("!!! Failed to download data !!!")
 
             else:
-                with open(data[dataset]['file'], "wb") as fid:
+                with open(data[dataset]['file'], "wb") as fid: 
                     fid.write(r.content)
