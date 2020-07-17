@@ -4,7 +4,7 @@
 import os, requests
 import numpy as np
 
-fname = "stringer_spontaneous.npy"
+fname = "../../Data/stringer_spontaneous.npy"
 url = "https://osf.io/dpqaj/download"
 
 if not os.path.isfile(fname):
