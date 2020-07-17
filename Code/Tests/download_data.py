@@ -23,10 +23,10 @@ for dataset in data.keys():
         except requests.ConnectionError:
             print("!!! Failed to download data !!!")
 
-    else:
-        if r.status_code != requests.codes.ok:
-            print("!!! Failed to download data !!!")
-
         else:
-            with open(data[dataset]['file'], "wb") as fid:
-                fid.write(r.content)
+            if r.status_code != requests.codes.ok:
+                print("!!! Failed to download data !!!")
+
+            else:
+                with open(data[dataset]['file'], "wb") as fid:
+                    fid.write(r.content)
