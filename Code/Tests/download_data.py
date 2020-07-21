@@ -2,7 +2,6 @@
 
 # From https://github.com/NeuromatchAcademy/course-content/blob/master/projects/load_stringer_spontaneous.ipynb
 import os, requests
-import numpy as np
 
 data = {
     'Orientation': {
