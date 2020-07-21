@@ -5,17 +5,12 @@ import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib as mpl
 from Code.sampling import sample_uniform, sample_around_point
+from Code.visualization import scatterplot
 
-mpl.use('Qt5Agg') # Comment out if not in Windows
 
-# fname = "Data/stringer_spontaneous.npy"
 fname = "Data/stringer_orientations.npy"
 dat = np.load(fname, allow_pickle=True).item()
 print(dat.keys())
-
-# 3d scatter plot
-scatterplot = plt.figure()
-ax = scatterplot.add_subplot(111, projection='3d')
 
 # sample = sample_uniform(dat['xyz'], p=0.05)
 sample = sample_around_point(
@@ -30,9 +25,5 @@ sample = sample_around_point(
     )
 ) # warning! this is a bit computationally expensive...
 
-
-ax.scatter(sample[0,:], sample[1,:], sample[2,:], c='r', marker='o', alpha=0.1)
-ax.set_xlim(6, 1126)
-ax.set_ylim(6.65, 640)
-ax.set_zlim(-450, -150)
-plt.show()
+# Visualize in 3d space as scatter plot
+scatterplot(sample, c='r', marker='o', alpha=0.1)

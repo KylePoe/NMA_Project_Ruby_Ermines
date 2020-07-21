@@ -2,10 +2,11 @@
 
 import numpy as np
 
-SPONTANEOUS_DATA = "Data/stringer_spontaneous.npy"
+SPONTANEOUS_DATA = "../Data/stringer_spontaneous.npy"
 
-# Spontaneous data dimensionality analysis
+if __name__ == '__main__':
 
-data = np.load(SPONTANEOUS_DATA, allow_pickle=True).item()
+    # Spontaneous data dimensionality analysis
+    data = np.load(SPONTANEOUS_DATA, allow_pickle=True).item()
 
-pass
+    pass

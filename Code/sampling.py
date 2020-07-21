@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import multivariate_normal
+from scipy.spatial import cKDTree
 
 __author__ = 'Kyle Poe'
 
@@ -62,6 +63,16 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
         nn = sum(probs != 0)
 
     return neurons[:, np.random.choice(neurons.shape[1], nn, replace=False, p=probs)]
+
+def voronoi_tesselation_3d(neurons, points):
+    voronoi_kdtree = cKDTree(points.T)
+    test_point_dist, test_point_regions = voronoi_kdtree.query(neurons.T, k=1)
+    return [
+        neurons[
+            :,
+            test_point_regions == iregion           # Return list of heuron groupings
+        ] for iregion in range(voronoi_kdtree.n)
+    ]
 
 def _get_nn(neurons, n, p):
     if n is not None:
