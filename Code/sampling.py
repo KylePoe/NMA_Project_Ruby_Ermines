@@ -121,7 +121,6 @@ def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
 def random_partition(neurons, n=None, p=None):
     pp = _get_nn(neurons, n, p)
     shuffled = np.random.permutation(neurons.T).T
-
     N = int(neurons.shape[1]/pp)
 
     return [shuffled[:, (i*pp):(i+1)*pp] for i in range(N)]
