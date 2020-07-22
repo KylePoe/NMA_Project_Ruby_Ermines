@@ -124,3 +124,11 @@ def random_partition(neurons, n=None, p=None):
     N = int(neurons.shape[1]/pp)
 
     return [shuffled[:, (i*pp):(i+1)*pp] for i in range(N)]
+
+
+def random_interval(n, N):
+        """Select random interval of length n from an array of length N"""
+
+        max_start_index = N - n
+        start = np.random.random_integers(0, max_start_index)
+        return [start, start + n]

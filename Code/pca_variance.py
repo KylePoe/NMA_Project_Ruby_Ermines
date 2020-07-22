@@ -89,13 +89,13 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
         cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
         if use_multiprocessing:
             pool = Pool()
-            for x in pool.starmap(_get_pca_dimensionality, zip(array_subsets, cutoff_array)):
+            for x in pool.starmap(get_pca_dimensionality, zip(array_subsets, cutoff_array)):
                 dimensionality_bootstrap.append(x)
             pool.close()
             pool.join()
         else:
             for array_subset in array_subsets:
-                dimensionality = _get_pca_dimensionality(array_subset, cum_var_cutoff)
+                dimensionality = get_pca_dimensionality(array_subset, cum_var_cutoff)
                 dimensionality_bootstrap.append(dimensionality)
 
         # Save relevant values
@@ -112,7 +112,7 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     return dimensionality_means, dimensionality_lower_ci, dimensionality_upper_ci
 
 
-def _get_pca_dimensionality(array, cutoff):
+def get_pca_dimensionality(array, cutoff):
     """ 
     Returns the dimensionality of the given array, defined as the number of PCA components 
     needed to exceed the cutoff of cumulative variance explained.
