@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from multiprocessing import Process, Manager, Pool
 
-import sampling
+from Code import sampling
+from Code.file_io import load_spontaneous
 
 __author__ = 'Cameron Smith'
 
@@ -21,7 +22,9 @@ def demo_variance_explained_curve():
     """
     
     # Load data and calculate (assumes .npy file is in the same directory)
-    neurons = np.load('stringer_spontaneous.npy', allow_pickle=True).item()['sresp']
+    # neurons = np.load('stringer_spontaneous.npy', allow_pickle=True).item()['sresp']
+    neurons = load_spontaneous()['sresp']
+
     cell_sample_nums = np.arange(10,20)
     cum_var_cutoff = 0.8
     dmeans, dlower, dupper = get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff)
