@@ -130,3 +130,4 @@ dmypy.json
 .vscode/launch.json
 .vscode/launch.json
 /Data/stringer_orientations.npy
+/Data/stringer_spontaneous.npy

@@ -38,19 +38,39 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
     # Get neurons
     nn = _get_nn(neurons, n, p)
 
+    layer = False
+
+    # Determine if using layer
+    if len(np.unique(neurons[2, :])) == 1:
+        # Continue adapting to 2d version
+        neuron_locs = neuron_locs[(0, 1), :]
+        depth = neurons[2, 0]
+        layer = True
+
     if point is not None:
         pp = np.array(point)
-
-    elif x is not None and y is not None and z is not None:
-        pp = np.array([x, y, z])
+    elif layer:
+        if x is not None and y is not None:
+            pp = np.array([x,y])
+        else:
+            raise Exception('Please provide x/y or a point')
     else:
-        raise Exception('Please provide coordinates')
+        if x is not None and y is not None and z is not None:
+            pp = np.array([x,y,z])
+        else:
+            raise Exception('Please provide x/y/z or a point')
 
     # Determine covariance matrix
     if cov is not None:
-        pass
+        if not cov.shape == (3 - layer, 3 - layer):
+            raise Exception('Covariance matrix dimensions do not match data')
+
     elif v is not None:
-        cov = np.diag([v, v, v])
+        if layer:
+            cov = np.diag(v * np.ones(2))
+
+        else:
+            cov = np.diag(v * np.ones(3))
     else:
         raise Exception('You gotta specify the variance')
 
@@ -63,7 +83,7 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
 
     return neurons[:, np.random.choice(neurons.shape[1], nn, replace=False, p=probs)]
 
-def voronoi_tesselation_3d(neurons, points):
+def voronoi_tesselation(neurons, points):
     voronoi_kdtree = cKDTree(points.T)
     test_point_dist, test_point_regions = voronoi_kdtree.query(neurons.T, k=1)
     return [
@@ -72,9 +92,6 @@ def voronoi_tesselation_3d(neurons, points):
             test_point_regions == iregion           # Return list of heuron groupings
         ] for iregion in range(voronoi_kdtree.n)
     ]
-
-def voronoi_tesselation_layer(neurons, points, layer):
-    pass
 
 def _get_nn(neurons, n, p):
     if n is not None:
@@ -100,3 +117,11 @@ def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
 
     neuron_mask = neuron_loc[2, :] == depth
     return neurons[:, neuron_mask]
+
+def random_partition(neurons, n=None, p=None):
+    pp = _get_nn(neurons, n, p)
+    shuffled = np.random.permutation(neurons.T).T
+
+    N = int(neurons.shape[1]/pp)
+
+    return [shuffled[:, (i*pp):(i+1)*pp] for i in range(N)]
