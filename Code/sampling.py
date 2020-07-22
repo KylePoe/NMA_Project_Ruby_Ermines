@@ -8,8 +8,6 @@ __author__ = 'Kyle Poe'
 Different strategies for sampling neurons that we might want to use.
 """
 
-NEURON_LAYER_MAP = np.flip(np.arange(-150, -475, -25))
-
 def sample_uniform(neurons, n=None, p=None, prob=None):
     """Uniformly sample n neurons or p percent of neurons from the population
 
@@ -87,17 +85,18 @@ def _get_nn(neurons, n, p):
     else:
         raise Exception('Please provide either sample size or percentage')
 
-def get_layer(neurons, layer_id=None, depth=None):
+def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
     """Obtain the layer of neurons corresponding to layer number or specific depth."""
 
-    if layer_id is not None:
-        depth = NEURON_LAYER_MAP[layer_id-1]
-    elif depth is not None:
-        if depth in NEURON_LAYER_MAP:
+    layers = np.unique(neuron_loc[2, :])
+
+    if depth is not None:
+        if depth in layers:
             pass
+        elif return_closest:
+            depth = layers[np.argmin(np.abs(layers - depth))]
         else:
             raise Exception('Provided depth does not correspond to layer.')
 
-    neuron_mask = neurons[3, :] == depth
-
+    neuron_mask = neuron_loc[2, :] == depth
     return neurons[:, neuron_mask]
