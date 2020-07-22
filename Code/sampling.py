@@ -1,12 +1,12 @@
 import numpy as np
 from scipy.stats import multivariate_normal
+from scipy.spatial import cKDTree
 
 __author__ = 'Kyle Poe'
 
 """
 Different strategies for sampling neurons that we might want to use.
 """
-
 
 def sample_uniform(neurons, n=None, p=None, prob=None):
     """Uniformly sample n neurons or p percent of neurons from the population
@@ -63,6 +63,19 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
 
     return neurons[:, np.random.choice(neurons.shape[1], nn, replace=False, p=probs)]
 
+def voronoi_tesselation_3d(neurons, points):
+    voronoi_kdtree = cKDTree(points.T)
+    test_point_dist, test_point_regions = voronoi_kdtree.query(neurons.T, k=1)
+    return [
+        neurons[
+            :,
+            test_point_regions == iregion           # Return list of heuron groupings
+        ] for iregion in range(voronoi_kdtree.n)
+    ]
+
+def voronoi_tesselation_layer(neurons, points, layer):
+    pass
+
 def _get_nn(neurons, n, p):
     if n is not None:
         return n
@@ -71,3 +84,19 @@ def _get_nn(neurons, n, p):
         return round(neurons.shape[1] * p)
     else:
         raise Exception('Please provide either sample size or percentage')
+
+def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
+    """Obtain the layer of neurons corresponding to layer number or specific depth."""
+
+    layers = np.unique(neuron_loc[2, :])
+
+    if depth is not None:
+        if depth in layers:
+            pass
+        elif return_closest:
+            depth = layers[np.argmin(np.abs(layers - depth))]
+        else:
+            raise Exception('Provided depth does not correspond to layer.')
+
+    neuron_mask = neuron_loc[2, :] == depth
+    return neurons[:, neuron_mask]

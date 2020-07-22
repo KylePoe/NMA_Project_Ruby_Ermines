@@ -2,6 +2,7 @@
 
 # From https://github.com/NeuromatchAcademy/course-content/blob/master/projects/load_stringer_spontaneous.ipynb
 import os, requests
+from pathlib import Path
 
 data = {
     'Orientation': {
@@ -15,6 +16,9 @@ data = {
 }
 
 def download_data():
+    if not os.path.isdir('Data'):
+        os.mkdir('Data')
+
     for dataset in data.keys():
         if not os.path.isfile(data[dataset]['file']):
             try:
