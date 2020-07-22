@@ -16,7 +16,7 @@ Calculates bootstrapped variance explained based on sampling of neurons
 """
 
 
-def demo_variance_explained_curve():
+def demo_variance_explained_curve(use_multiprocessing=False):
     """ 
     Load example data and creates plot of dimensionality based on sample size
     """
@@ -27,7 +27,7 @@ def demo_variance_explained_curve():
 
     cell_sample_nums = np.arange(10,20)
     cum_var_cutoff = 0.8
-    dmeans, dlower, dupper = get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff)
+    dmeans, dlower, dupper = get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff, use_multiprocessing=use_multiprocessing)
     
     # Plot dimensionality means and confidence intervals
     ax = plt.subplots(1,1,figsize=(10,10))[1]
@@ -44,7 +44,7 @@ def demo_variance_explained_curve():
 
 
 def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, pca_repetitions=10,
-                                sampling_method='sample_uniform', **kargs):
+                                sampling_method='sample_uniform', use_multiprocessing=True, **kargs):
     """ Return a curve of variance explained. Extra arguments are passed to the sampling function.
     
     Warnings: 1) Data will be z-score transformed after being passed in, do not preemptively z-score your array.
@@ -54,7 +54,8 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     :param cell_sample_nums: 1D Int array. Contains sample numbers to use.
     :param cum_var_cutoff: Float. Between 0 and 1. Cutoff for cumulative variance explained.
     :param pca_repetitions: Int. Number of PCA repeats for each sample_num
-    :param sampling_method: Str. Unused at this time. 
+    :param sampling_method: Str. Unused at this time.
+    :param use_multiprocessing: Bool. Set to False if multiprocessing functions throw errors.
     
     Returns three lists: dimensionality means, lower confidence intervals, and upper confidence intervals
     """
@@ -86,11 +87,16 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
         # Calculate dimensionality for all random samples
         dimensionality_bootstrap = []
         cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
-        pool = Pool()
-        for x in pool.starmap(_get_pca_dimensionality, zip(array_subsets, cutoff_array)):
-            dimensionality_bootstrap.append(x)
-        pool.close()
-        pool.join()
+        if use_multiprocessing:
+            pool = Pool()
+            for x in pool.starmap(_get_pca_dimensionality, zip(array_subsets, cutoff_array)):
+                dimensionality_bootstrap.append(x)
+            pool.close()
+            pool.join()
+        else:
+            for array_subset in array_subsets:
+                dimensionality = _get_pca_dimensionality(array_subset, cum_var_cutoff)
+                dimensionality_bootstrap.append(dimensionality)
 
         # Save relevant values
         dimensionality_means[i] = np.mean(dimensionality_bootstrap)
