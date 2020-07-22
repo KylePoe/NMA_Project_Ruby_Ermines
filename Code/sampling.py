@@ -8,6 +8,7 @@ __author__ = 'Kyle Poe'
 Different strategies for sampling neurons that we might want to use.
 """
 
+NEURON_LAYER_MAP = np.flip(np.arange(-150, -475, -25))
 
 def sample_uniform(neurons, n=None, p=None, prob=None):
     """Uniformly sample n neurons or p percent of neurons from the population
@@ -74,6 +75,9 @@ def voronoi_tesselation_3d(neurons, points):
         ] for iregion in range(voronoi_kdtree.n)
     ]
 
+def voronoi_tesselation_layer(neurons, points, layer):
+    pass
+
 def _get_nn(neurons, n, p):
     if n is not None:
         return n
@@ -82,3 +86,18 @@ def _get_nn(neurons, n, p):
         return round(neurons.shape[1] * p)
     else:
         raise Exception('Please provide either sample size or percentage')
+
+def get_layer(neurons, layer_id=None, depth=None):
+    """Obtain the layer of neurons corresponding to layer number or specific depth."""
+
+    if layer_id is not None:
+        depth = NEURON_LAYER_MAP[layer_id-1]
+    elif depth is not None:
+        if depth in NEURON_LAYER_MAP:
+            pass
+        else:
+            raise Exception('Provided depth does not correspond to layer.')
+
+    neuron_mask = neurons[3, :] == depth
+
+    return neurons[:, neuron_mask]
