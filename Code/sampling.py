@@ -118,10 +118,58 @@ def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
     neuron_mask = neuron_loc[2, :] == depth
     return neurons[:, neuron_mask]
 
+
+def sample_depth_range(neurons, neuron_locs, depth_range, get_all=False, return_idx=False, n=None, p=None):
+    """Return a random selection of neurons within a particular depth range
+
+    :param return_idx: Bool of whether or not you want to return the original column indices of the selected neurons
+    :param get_all: Bool of whether or not you want to get all of the neurons in the depth range if the number you provide exceeds the number in the depth range
+    :param neurons: 2D array of neurons, columns correspond to specific neurons.
+    :param neuron_locs: 2D array of neuron locations in 3D space. 3xN array
+    :param n: number of neurons to sample
+    :param p: percentage of total neurons to sample
+    :param depth_range: tuple of (shallowest, deepest) in um. Remember they're negative values!
+    :returns: random selection of neurons within specified depth_range, and if return_idx: original column indices of the selected neurons
+    """
+    nn = _get_nn(neurons, n, p)
+    depth_range = (max(depth_range), min(depth_range))
+    deeper = neuron_locs[2, :] <= depth_range[0]
+    shallower = neuron_locs[2, :] >= depth_range[1]
+    idx = np.logical_and(deeper, shallower)
+
+    if not idx.any():
+        raise Exception('Provided depth range does not include any neurons')
+    idx = np.arange(neurons.shape[1])[np.logical_and(deeper, shallower)]
+    neurons = neurons[:, idx]
+    m = neurons.shape[1]
+    if m < nn:
+        if not get_all:
+            raise Exception(f'Asked for {nn} neurons, but the number of neurons '
+                            f'in the depth range is only {m}')
+        elif return_idx:
+            return neurons, np.arange(m)
+        else:
+            return neurons
+    else:
+        random_idx = np.random.choice(m, nn, replace=False)
+        neurons = neurons[:, random_idx]
+    if return_idx:
+        return neurons, idx[random_idx]
+    else:
+        return neurons
+
+
 def random_partition(neurons, n=None, p=None):
     pp = _get_nn(neurons, n, p)
     shuffled = np.random.permutation(neurons.T).T
-
     N = int(neurons.shape[1]/pp)
 
     return [shuffled[:, (i*pp):(i+1)*pp] for i in range(N)]
+
+
+def random_interval(n, N):
+        """Select random interval of length n from an array of length N"""
+
+        max_start_index = N - n
+        start = np.random.random_integers(0, max_start_index)
+        return [start, start + n]

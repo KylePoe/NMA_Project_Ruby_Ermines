@@ -30,7 +30,10 @@ part = random_partition(dat['xyz'], n=50)
 # scatterplot(sample, c='r', marker='o', alpha=0.1)
 
 # Visualize one plane
-layer = get_layer(dat['xyz'], dat['xyz'], depth=-360)
+for depth in [-300, -330, -360, -390]:
+    layer = get_layer(dat['xyz'], dat['xyz'], depth=depth, return_closest=True)
+    scatter = scatterplot(layer, proj_z=True, c='b', marker='o', alpha=0.4)
+    scatter.suptitle(depth)
 
 plane_sample = sample_around_point(
     layer,

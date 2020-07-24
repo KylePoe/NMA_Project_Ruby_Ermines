@@ -104,7 +104,6 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
             pool.join()
         else:
             for array_subset in array_subsets:
-                dimensionality = get_pca_dimensionality(array_subset, cum_var_cutoff, dimensionality_guess)
                 dimensionality_bootstrap.append(dimensionality)
 
         # Save relevant values
