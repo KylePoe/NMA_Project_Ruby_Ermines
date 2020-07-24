@@ -3,6 +3,7 @@ import seaborn as sns
 from tqdm import tqdm
 from scipy.stats import zscore
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 from sklearn.decomposition import PCA
 from multiprocessing import Process, Manager, Pool
 
@@ -45,7 +46,7 @@ def demo_variance_explained_curve(use_multiprocessing=False):
 
 def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, pca_repetitions=10, 
                                  z_transform_data=True, sampling_method='sample_uniform', 
-                                 use_multiprocessing=False, n_component_guess_multiplier=0.5, **kargs):
+                                 use_multiprocessing=False, **kwargs):
     """ Return a curve of variance explained. Extra arguments are passed to the sampling function.
     
     Warnings: 1) Returned data will be sorted from lowest to highest cell_sample_nums.
@@ -57,12 +58,13 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     :param z_transform_data: Bool. Set to True to z-score your array before processing
     :param sampling_method: Str. Unused at this time.
     :param use_multiprocessing: Bool. Set to False if multiprocessing functions throw errors.
-    :param n_component_guess_multiplier: Float. Assume dimensionality ≈ [min(col_n, row_n)*this value]
     
     Returns three lists: dimensionality means, lower confidence intervals, and upper confidence intervals
     """
 
-    sampling_func_lookup = {'sample_uniform': sampling.sample_uniform}
+    sampling_func_lookup = {'sample_uniform': sampling.sample_uniform,
+                            'sample_around_point': sampling.sample_around_point}
+    sample_func = sampling_func_lookup[sampling_method]
     
     if np.any(np.array(cell_sample_nums) > neurons.shape[1]):
         raise Exeception('Warning: More samples than neurons available requested!')
@@ -81,18 +83,27 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     if z_transform_data:
         Z = zscore(Z, axis=0)
     Z = np.nan_to_num(Z)
+    
+    # Determine curve for dimensionality guess
+    print('Guessing dimensionality curve...')
+    dim_sample_nums = [1000, 2000, 3000]
+    dim_sample_results = []
+    for dim_sample_num in dim_sample_nums:
+        sample_neurons = sampling_func_lookup['sample_uniform'](Z, dim_sample_num, **kwargs)
+        guess_dimensionality = int(np.min(sample_neurons.shape)*0.75)
+        dim_sample_results.append(get_pca_dimensionality(sample_neurons, cum_var_cutoff, guess_dimensionality))
+    dim_curve_params, _ = curve_fit(_dim_curve, dim_sample_nums, dim_sample_results, p0=(1, 1, 4000), maxfev=10000)
 
     for i,cell_sample_num in tqdm(enumerate(shuff_cell_sample_nums), total=len(shuff_cell_sample_nums)):
 
         # Create list of smaller arrays to pass to multiprocessing function
         array_subsets = []
-        sample_func = sampling_func_lookup[sampling_method]
         for rep in range(pca_repetitions):
-            temp_array = sample_func(Z, cell_sample_num, **kargs)
+            temp_array = sample_func(Z, n=cell_sample_num, **kwargs)
             array_subsets.append(temp_array)
 
         # Calculate dimensionality for all random samples
-        dimensionality_guess = np.ceil(cell_sample_num*n_component_guess_multiplier).astype('int')
+        dimensionality_guess = int(np.min((_dim_curve(cell_sample_num, *dim_curve_params)+200, *array_subsets[0].shape)))
         dimensionality_bootstrap = []
         if use_multiprocessing:
             cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
@@ -101,7 +112,6 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
             for x in pool.starmap(get_pca_dimensionality, zip(array_subsets, cutoff_array, dimensionality_guess_array)):
                 dimensionality_bootstrap.append(x)
             pool.close()
-            pool.join()
         else:
             for array_subset in array_subsets:
                 dimensionality_bootstrap.append(dimensionality)
@@ -150,6 +160,7 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
     
     """
     
+    print(n_components, counter)
     if n_components is None:
         n_components = np.min(array.shape)
     if z_transform_data:
@@ -166,3 +177,6 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
         dimensionality = np.where(cum_var_thresholded)[0][0]
     return dimensionality
 
+
+def _dim_curve(data,a,b,c):
+    return (a-b)*np.exp(-data/c)+b
