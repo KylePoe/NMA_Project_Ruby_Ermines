@@ -8,7 +8,7 @@ __author__ = 'Kyle Poe'
 Different strategies for sampling neurons that we might want to use.
 """
 
-def sample_uniform(neurons, n=None, p=None, prob=None):
+def sample_uniform(neurons, n=None, p=None, prob=None, **kwargs):
     """Uniformly sample n neurons or p percent of neurons from the population
 
     :param p: Percentage of total neuron population to sample
@@ -20,7 +20,7 @@ def sample_uniform(neurons, n=None, p=None, prob=None):
     return neurons[:, np.random.choice(neurons.shape[1], size=nn, replace=False, p=prob)]
 
 
-def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None, y=None, z=None, v=None, cov=None):
+def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None, y=None, z=None, v=None, cov=None, expand=False, **kwargs):
     """Draw a normally distributed sample of a particular size centered around a point
 
     :param neurons: 2D array of neurons, columns correspond to specific neurons.
@@ -33,6 +33,7 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
     :param z: z-coordinate of point in 3d space to center sampling distribution around
     :param v: variance of gaussian, specifies a spherical distribution
     :param cov: covariance matrix of gaussian for arbitrary orientation
+    :param expand: bool switch to continually expand covariance of gaussian to meet n requested
     """
 
     # Get neurons
@@ -58,7 +59,8 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
         if x is not None and y is not None and z is not None:
             pp = np.array([x,y,z])
         else:
-            raise Exception('Please provide x/y/z or a point')
+            pp = neuron_locs[:, np.random.randint(neuron_locs.shape[1])]
+            #raise Exception('Please provide x/y/z or a point')
 
     # Determine covariance matrix
     if cov is not None:
@@ -78,8 +80,12 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
     probs /= sum(probs)
 
     if nn > sum(probs != 0):
-        print(f'WARNING! Asking for too many neurons. Asked for {nn}, max available {sum(probs != 0)}')
-        nn = sum(probs != 0)
+        if expand:
+            return sample_around_point(neurons, neuron_locs, n=n, p=p, point=point, x=x, 
+                                       y=y, z=z, v=v, cov=cov*1.5, expand=expand, **kwargs)
+        else:
+            print(f'WARNING! Asking for too many neurons. Asked for {nn}, max available {sum(probs != 0)}')
+            nn = sum(probs != 0)
 
     return neurons[:, np.random.choice(neurons.shape[1], nn, replace=False, p=probs)]
 

@@ -3,11 +3,12 @@ import seaborn as sns
 from tqdm import tqdm
 from scipy.stats import zscore
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 from sklearn.decomposition import PCA
 from multiprocessing import Process, Manager, Pool
 
 from Code import sampling
-from Code.file_io import load_spontaneous
+from Code.file_io import load_spontaneous,load_orientations
 
 __author__ = 'Cameron Smith'
 
@@ -43,24 +44,30 @@ def demo_variance_explained_curve(use_multiprocessing=False):
     return
 
 
-def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, pca_repetitions=10,
-                                sampling_method='sample_uniform', use_multiprocessing=True, **kargs):
+def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, pca_repetitions=10, 
+                                 z_transform_data=True, sampling_method='sample_uniform', 
+                                 use_multiprocessing=False, **kwargs):
     """ Return a curve of variance explained. Extra arguments are passed to the sampling function.
     
-    Warnings: 1) Data will be z-score transformed after being passed in, do not preemptively z-score your array.
-              2) Returned data will be sorted from lowest to highest cell_sample_nums.
+    Warnings: 1) Returned data will be sorted from lowest to highest cell_sample_nums.
     
-    :param neurons: 2D array. Raw data. Each column should correspond to a single neuron.
+    :param neurons: 2D array. Raw data. MUST be in the shape Timepoints x Neurons.
     :param cell_sample_nums: 1D Int array. Contains sample numbers to use.
     :param cum_var_cutoff: Float. Between 0 and 1. Cutoff for cumulative variance explained.
     :param pca_repetitions: Int. Number of PCA repeats for each sample_num
+    :param z_transform_data: Bool. Set to True to z-score your array before processing
     :param sampling_method: Str. Unused at this time.
     :param use_multiprocessing: Bool. Set to False if multiprocessing functions throw errors.
     
     Returns three lists: dimensionality means, lower confidence intervals, and upper confidence intervals
     """
 
-    sampling_func_lookup = {'sample_uniform': sampling.sample_uniform}
+    sampling_func_lookup = {'sample_uniform': sampling.sample_uniform,
+                            'sample_around_point': sampling.sample_around_point}
+    sample_func = sampling_func_lookup[sampling_method]
+    
+    if np.any(np.array(cell_sample_nums) > neurons.shape[1]):
+        raise Exeception('Warning: More samples than neurons available requested!')
     
     # This is shuffled to better estimate runtime in TQDM
     shuff_cell_sample_nums = np.copy(cell_sample_nums)
@@ -72,30 +79,41 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     dimensionality_upper_ci = np.zeros_like(shuff_cell_sample_nums)  # 95th percentile of bootstrapped dimensionality
 
     # Transform data to z-score to center it as the units are not the same for all neurons
-    Z = zscore(neurons, axis=1)
+    Z = neurons
+    if z_transform_data:
+        Z = zscore(Z, axis=0)
     Z = np.nan_to_num(Z)
+    
+    # Determine curve for dimensionality guess
+    print('Guessing dimensionality curve...')
+    dim_sample_nums = [1000, 2000, 3000]
+    dim_sample_results = []
+    for dim_sample_num in dim_sample_nums:
+        sample_neurons = sampling_func_lookup['sample_uniform'](Z, dim_sample_num, **kwargs)
+        guess_dimensionality = int(np.min(sample_neurons.shape)*0.75)
+        dim_sample_results.append(get_pca_dimensionality(sample_neurons, cum_var_cutoff, guess_dimensionality))
+    dim_curve_params, _ = curve_fit(_dim_curve, dim_sample_nums, dim_sample_results, p0=(1, 1, 4000), maxfev=10000)
 
-    for i,cell_sample_num in tqdm(enumerate(shuff_cell_sample_nums), total=len(shuff_cell_sample_nums)):  
+    for i,cell_sample_num in tqdm(enumerate(shuff_cell_sample_nums), total=len(shuff_cell_sample_nums)):
 
         # Create list of smaller arrays to pass to multiprocessing function
         array_subsets = []
-        sample_func = sampling_func_lookup[sampling_method]
         for rep in range(pca_repetitions):
-            temp_array = sample_func(Z, cell_sample_num, **kargs)
+            temp_array = sample_func(Z, n=cell_sample_num, **kwargs)
             array_subsets.append(temp_array)
 
         # Calculate dimensionality for all random samples
+        dimensionality_guess = int(np.min((_dim_curve(cell_sample_num, *dim_curve_params)+200, *array_subsets[0].shape)))
         dimensionality_bootstrap = []
-        cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
         if use_multiprocessing:
+            cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
+            dimensionality_guess_array = (np.ones(pca_repetitions)*dimensionality_guess).astype('int')
             pool = Pool()
-            for x in pool.starmap(get_pca_dimensionality, zip(array_subsets, cutoff_array)):
+            for x in pool.starmap(get_pca_dimensionality, zip(array_subsets, cutoff_array, dimensionality_guess_array)):
                 dimensionality_bootstrap.append(x)
             pool.close()
-            pool.join()
         else:
             for array_subset in array_subsets:
-                dimensionality = get_pca_dimensionality(array_subset, cum_var_cutoff)
                 dimensionality_bootstrap.append(dimensionality)
 
         # Save relevant values
@@ -112,14 +130,53 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     return dimensionality_means, dimensionality_lower_ci, dimensionality_upper_ci
 
 
-def get_pca_dimensionality(array, cutoff):
+def get_sample_cov_matrix(X):
+    """
+    Returns the sample covariance matrix of data X.
+
+    :param 
+    Args:
+    X (numpy array of floats) : Data matrix each column corresponds to a
+                                different random variable
+
+    Returns:
+    (numpy array of floats)   : Covariance matrix
+    """
+
+    X = X - np.mean(X, 0)
+    cov_matrix = 1 / X.shape[0] * np.matmul(X.T, X)
+    return cov_matrix
+
+
+def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_transform_data=False, counter=0):
     """ 
     Returns the dimensionality of the given array, defined as the number of PCA components 
     needed to exceed the cutoff of cumulative variance explained.
+    
+    :param array: 2d numpy array. MUST be in Timepoints x Neurons shape.
+    :param cutoff: Float. Dimensionality is assigned when cumulative variance explained > cutoff.
+    :param n_components: Int. Number of components to calculate for to find PCA
+    :param z_transform_data: Bool. Set to true if you want your data to be z-scored before processing
+    
     """
     
-    data_pca = PCA(n_components = array.shape[1]).fit(array)
-    cum_var_explained = np.cumsum(data_pca.explained_variance_)/np.sum(data_pca.explained_variance_)
-    dimensionality = np.where(cum_var_explained > cutoff)[0][0]
+    print(n_components, counter)
+    if n_components is None:
+        n_components = np.min(array.shape)
+    if z_transform_data:
+        array = zscore(array, axis=0)
+    if covariance is None:
+        covariance = np.trace(get_sample_cov_matrix(array))
+    data_pca = PCA(n_components = n_components).fit(array)
+    cum_var_explained = np.cumsum(data_pca.explained_variance_)/covariance
+    cum_var_thresholded = cum_var_explained > cutoff
+    if np.sum(cum_var_thresholded) == 0:
+        new_n_components = int(np.min((n_components+np.ceil(n_components*0.75), np.min(array.shape))))
+        dimensionality = get_pca_dimensionality(array, cutoff, new_n_components, covariance, False ,counter+1)
+    else:
+        dimensionality = np.where(cum_var_thresholded)[0][0]
     return dimensionality
 
+
+def _dim_curve(data,a,b,c):
+    return (a-b)*np.exp(-data/c)+b

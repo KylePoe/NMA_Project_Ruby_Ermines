@@ -26,9 +26,9 @@ dim_mat = np.zeros((neuron_bins, sample_bins))
 std_mat = np.zeros((neuron_bins, sample_bins))
 
 for i, n in enumerate(neuron_counts):
-    print(f'Calculating {n} neurons...')
+    print(f'Calculating {n} neurons... ({i}/{neuron_bins})')
     for j, m in enumerate(sample_counts):
-        print(f'\tCalculating {m} samples...')
+        print(f'\tCalculating {m} samples... ({j}/{sample_bins})')
         neuron_samples = random_partition(ts.T, n)
         comps = np.zeros_like(neuron_samples)
         for k, sample in enumerate(neuron_samples):
