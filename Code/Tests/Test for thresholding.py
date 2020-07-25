@@ -26,6 +26,6 @@ scipy.signal.find_peaks(pupil1d, height=None, threshold=1000, distance=None, pro
 
 peaks, _ = find_peaks(pupil1d, height=0)
 plt.plot(pupil1d)
-plt.plot(peaks, pupil1d[peaks], "var")
+plt.plot(peaks, pupil1d[peaks], label='var')
 plt.plot(np.zeros_like(pupil1d), "--", color="gray")
 plt.show()
