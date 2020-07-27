@@ -65,17 +65,17 @@ for isample, sample_size in enumerate(
 
         print('\n', end="")
 
-print('Saving...')
+stop = timeit.default_timer()
+print(f'...Done in {stop - start}.')
 
 np.save(
     f'dim_analysis_{datetime.now()}.npy',
     {
         'parameters': params,
-        'output': data_mat
+        'output': data_mat,
+        'time elapsed': stop - start
     }
 )
 
-stop = timeit.default_timer()
 
-print(f'...Done in {stop - start}.')
 
