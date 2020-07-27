@@ -180,3 +180,6 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
 
 def _dim_curve(data,a,b,c):
     return (a-b)*np.exp(-data/c)+b
+
+def _dim_curve(data,a,b,c):
+    return (a-b)*np.exp(-data/c)+b
