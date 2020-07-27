@@ -19,6 +19,9 @@ def sample_uniform(neurons, n=None, p=None, prob=None, **kwargs):
     nn = _get_nn(neurons, n, p)
     return neurons[:, np.random.choice(neurons.shape[1], size=nn, replace=False, p=prob)]
 
+def sample_cylindrical():
+    pass
+
 
 def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None, y=None, z=None, v=None, cov=None, expand=False, **kwargs):
     """Draw a normally distributed sample of a particular size centered around a point
