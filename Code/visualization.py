@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-
+import numpy as np
 
 def visualize_voronoi_tesselation(tesselation):
 
@@ -23,8 +23,12 @@ def scatterplot(neuron_locs, proj_z: bool = False, **kwargs):
     # Initialize interactive backend
     mpl.use('Qt5Agg')
 
+    if 'axis' in kwargs:
+        scatterplot = kwargs['axis']
+    else:
+        scatterplot = plt.figure()
+
     # 3d scatter plot
-    scatterplot = plt.figure()
     if not proj_z:
         ax = scatterplot.add_subplot(111, projection='3d')
         ax.scatter(neuron_locs[0, :], neuron_locs[1, :], neuron_locs[2, :], **kwargs)
@@ -34,3 +38,7 @@ def scatterplot(neuron_locs, proj_z: bool = False, **kwargs):
 
     plt.show()
     return scatterplot
+
+def visualize_dim_analysis(file):
+    data = np.load(file, allow_pickle=True).item()
+

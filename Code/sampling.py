@@ -19,8 +19,77 @@ def sample_uniform(neurons, n=None, p=None, prob=None, **kwargs):
     nn = _get_nn(neurons, n, p)
     return neurons[:, np.random.choice(neurons.shape[1], size=nn, replace=False, p=prob)]
 
-def sample_cylindrical():
-    pass
+def sample_cylindrical(
+        neurons,
+        neuron_locs,
+        n=None,
+        p=None,
+        point=None,
+        x=None,
+        y=None,
+        v=None,
+        cov=None,
+        expand=False,
+        **kwargs
+):
+    """Draw a normally distributed sample within plane and uniform along z of a particular variance centered around a point
+
+    :param neurons: 2D array of neurons, columns correspond to specific neurons.
+    :param neuron_locs: 2D array of neuron locations in 3D space. 3xN array
+    :param n: number of neurons to sample
+    :param p: pedrcentage of neurons to sample
+    :param point: point in 3d space to center sampling distribution around
+    :param x: x-coordinate of point in 3d space to center sampling distribution around
+    :param y: y-coordinate of point in 3d space to center sampling distribution around
+    :param v: variance of gaussian, specifies a spherical distribution
+    :param cov: covariance matrix of gaussian for arbitrary orientation
+    :param expand: bool switch to continually expand covariance of gaussian to meet n requested
+    """
+
+    # Get neurons
+    nn = _get_nn(neurons, n, p)
+
+    # Determine covariance matrix
+    if cov is not None:
+        if not cov.shape == (2, 2):
+            raise Exception('Covariance matrix dimensions are inappropriate, use 2x2')
+    elif v is not None:
+        cov = np.diag(v * np.ones(2))
+    else:
+        raise Exception('You gotta specify the (co)variance')
+
+    allowed = np.ones(neuron_locs.shape[1])
+
+    if point is not None:
+        pp = np.array(point)
+    else:
+        if x is not None and y is not None:
+            pp = np.array([x,y])
+        else:
+            if v is not None: # Too lazy to figure this out for covariance
+                # Choose only cells not too close to the boundary for the specified variance
+                dist = 10 * np.sqrt(v)
+                left = neuron_locs[0, :] - np.min(neuron_locs[0, :]) > dist
+                right = np.max(neuron_locs[0, :]) - neuron_locs[0, :] > dist
+                bottom = neuron_locs[1, :] - np.min(neuron_locs[1, :]) > dist
+                top = np.max(neuron_locs[1, :]) - neuron_locs[1, :] > dist
+                allowed = left & right & bottom & top
+
+            pp_loc = np.random.randint(sum(allowed))
+            pp = neuron_locs[:, allowed][(0,1), pp_loc]
+
+    probs = multivariate_normal.pdf(neuron_locs[(0,1), :].T, mean=pp, cov=cov)
+    probs /= sum(probs)
+
+    if nn > sum(probs != 0):
+        if expand:
+            return sample_cylindrical(neurons, neuron_locs, n=n, p=p, point=point, x=x,
+                                       y=y, v=v*1.2, cov=cov*1.2, expand=expand, **kwargs)
+        else:
+            print(f'WARNING! Asking for too many neurons. Asked for {nn}, max available {sum(probs != 0)}')
+            nn = sum(probs != 0)
+
+    return neurons[:, np.random.choice(neurons.shape[1], nn, replace=False, p=probs)]
 
 
 def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None, y=None, z=None, v=None, cov=None, expand=False, **kwargs):
