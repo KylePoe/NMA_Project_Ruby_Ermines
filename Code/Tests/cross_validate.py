@@ -49,15 +49,13 @@ def split_train_and_test(data, t=None, control=False):
       training and testing data, plus an optional control data which is randomly shuffled training data.
     """
 
-    if t is None:
+    if t is None or t > data.shape[0]:
         t = data.shape[0]
 
-    # Pick a random half of the time point range for the training range and the test range:
-    range1 = np.arange(t // 2)
-    range2 = range1 + t // 2
-    ranges = np.array([range1, range2])
-    train_range, test_range = np.random.permutation(ranges)
-
+    # Pick a random selection of the time point range for the training range and the test range:
+    ranges = np.random.choice(np.arange(data.shape[0]), size=t, replace=False)
+    train_range = ranges[:t//2]
+    test_range = ranges[t//2:]
     if control:
         return data[train_range], data[test_range], np.random.permutation(data[train_range].T).T
     else:
@@ -118,36 +116,36 @@ def scree(y, fig_title, labels):
     ax.legend()
     plt.show()
 
+if __name__ == '__main__':
+    # Run the following to sample random neurons from different depths and cross-validate the PCA model
+    dat = load.load_orientations()
+    neurons = dat['sresp'].T
+    neuron_locs = dat['xyz']
 
-# Run the following to sample random neurons from different depths and cross-validate the PCA model
-dat = load.load_orientations()
-neurons = dat['sresp'].T
-neuron_locs = dat['xyz']
+    # Z score the data
+    neurons = zscore(neurons, axis=0)
 
-# Z score the data
-neurons = zscore(neurons, axis=0)
+    # Set parameters
+    n = 10  # number of neurons to sample
+    t = 200  # number of time points to sample (will be divided into 2 for training and test)
+    n_components = None  # number of components for PCA; if none it will be auto-set
+    sup_range = (0, -300)  # superficial depth range; maximum of 12392 neurons for orientations data
+    dep_range = (-301, -600)  # deep depth range; maximum of 11197 neurons for orientations data
 
-# Set parameters
-n = 10  # number of neurons to sample
-t = 200  # number of time points to sample (will be divided into 2 for training and test)
-n_components = None  # number of components for PCA; if none it will be auto-set
-sup_range = (0, -300)  # superficial depth range; maximum of 12392 neurons for orientations data
-dep_range = (-301, -600)  # deep depth range; maximum of 11197 neurons for orientations data
+    # select neurons in the depth range
+    sup_data = spl.sample_depth_range(neurons, neuron_locs, sup_range, n=n)
+    dep_data = spl.sample_depth_range(neurons, neuron_locs, dep_range, n=n)
 
-# select neurons in the depth range
-sup_data = spl.sample_depth_range(neurons, neuron_locs, sup_range, n=n)
-dep_data = spl.sample_depth_range(neurons, neuron_locs, dep_range, n=n)
+    # split into training and test data
+    sup_train, sup_test = split_train_and_test(sup_data, t=t)
+    dep_train, dep_test = split_train_and_test(dep_data, t=t)
 
-# split into training and test data
-sup_train, sup_test = split_train_and_test(sup_data, t=t)
-dep_train, dep_test = split_train_and_test(dep_data, t=t)
+    # get cumulative variance explained
+    sup_train_var, sup_test_var = train_and_test_scree(sup_train, sup_test, n_components=n_components)
+    dep_train_var, dep_test_var = train_and_test_scree(dep_train, dep_test, n_components=n_components)
 
-# get cumulative variance explained
-sup_train_var, sup_test_var = train_and_test_scree(sup_train, sup_test, n_components=n_components)
-dep_train_var, dep_test_var = train_and_test_scree(dep_train, dep_test, n_components=n_components)
-
-# plot the data
-y = np.array([sup_train_var, sup_test_var, dep_train_var, dep_test_var])
-labels = ['Superficial training', 'Superficial test', 'Deep training', 'Deep test']
-scree(y, f'Orientations Data, {t // 2} time points', labels)
-print(f'time points: {t}; neurons: {n}')
+    # plot the data
+    y = np.array([sup_train_var, sup_test_var, dep_train_var, dep_test_var])
+    labels = ['Superficial training', 'Superficial test', 'Deep training', 'Deep test']
+    scree(y, f'Orientations Data, {t // 2} time points', labels)
+    print(f'time points: {t}; neurons: {n}')
