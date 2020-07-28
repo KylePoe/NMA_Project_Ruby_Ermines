@@ -128,7 +128,7 @@ def get_layer(neurons, neuron_loc, depth=None, return_closest: bool=False):
     return neurons[:, neuron_mask]
 
 
-def sample_depth_range(neurons, neuron_locs, depth_range, get_all=False, return_idx=False, n=None, p=None):
+def sample_depth_range(neurons, neuron_locs, depth_range, get_all=False, return_idx=False, n=None, p=None, **kwargs):
     """Return a random selection of neurons within a particular depth range
 
     :param return_idx: Bool of whether or not you want to return the original column indices of the selected neurons

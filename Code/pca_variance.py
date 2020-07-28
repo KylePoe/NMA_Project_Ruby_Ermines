@@ -1,4 +1,7 @@
+import json
+import hashlib
 import numpy as np
+from os import path
 import seaborn as sns
 from tqdm import tqdm
 from scipy.stats import zscore
@@ -9,6 +12,8 @@ from multiprocessing import Process, Manager, Pool
 
 from Code import sampling
 from Code.file_io import load_spontaneous,load_orientations
+
+
 
 __author__ = 'Cameron Smith'
 
@@ -46,7 +51,8 @@ def demo_variance_explained_curve(use_multiprocessing=False):
 
 def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, pca_repetitions=10, 
                                  z_transform_data=True, sampling_method='sample_uniform', 
-                                 use_multiprocessing=False, **kwargs):
+                                 use_multiprocessing=False, return_dict=False, depth_range=None, 
+                                 neuron_locs=None, **kwargs):
     """ Return a curve of variance explained. Extra arguments are passed to the sampling function.
     
     Warnings: 1) Returned data will be sorted from lowest to highest cell_sample_nums.
@@ -63,7 +69,9 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     """
 
     sampling_func_lookup = {'sample_uniform': sampling.sample_uniform,
-                            'sample_around_point': sampling.sample_around_point}
+                            'sample_around_point': sampling.sample_around_point,
+                            'sample_depths_uniform': sampling.sample_depth_range,
+                            'sample_depths_point': sampling.sample_around_point}
     sample_func = sampling_func_lookup[sampling_method]
     
     if np.any(np.array(cell_sample_nums) > neurons.shape[1]):
@@ -83,27 +91,33 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     if z_transform_data:
         Z = zscore(Z, axis=0)
     Z = np.nan_to_num(Z)
+    if sampling_method == 'sample_depths_point':
+        upper,lower = (np.max(depth_range), np.min(depth_range))
+        mask = np.where(np.logical_and(neuron_locs[2] <= upper, neuron_locs >= lower))[1]
+        Z = Z[:, mask]
+        neuron_locs = np.array(ori_dat['xyz'])[:,mask]
     
     # Determine curve for dimensionality guess
     print('Guessing dimensionality curve...')
     dim_sample_nums = [1000, 2000, 3000]
     dim_sample_results = []
     for dim_sample_num in dim_sample_nums:
-        sample_neurons = sampling_func_lookup['sample_uniform'](Z, dim_sample_num, **kwargs)
+        sample_neurons = sampling_func_lookup['sample_uniform'](Z, dim_sample_num, depth_range=depth_range, **kwargs)
         guess_dimensionality = int(np.min(sample_neurons.shape)*0.75)
         dim_sample_results.append(get_pca_dimensionality(sample_neurons, cum_var_cutoff, guess_dimensionality))
     dim_curve_params, _ = curve_fit(_dim_curve, dim_sample_nums, dim_sample_results, p0=(1, 1, 4000), maxfev=10000)
 
+    full_data_dict = {}
     for i,cell_sample_num in tqdm(enumerate(shuff_cell_sample_nums), total=len(shuff_cell_sample_nums)):
 
         # Create list of smaller arrays to pass to multiprocessing function
         array_subsets = []
         for rep in range(pca_repetitions):
-            temp_array = sample_func(Z, n=cell_sample_num, **kwargs)
+            temp_array = sample_func(Z, n=cell_sample_num, neuron_locs=neuron_locs, depth_range=depth_range, **kwargs)
             array_subsets.append(temp_array)
 
         # Calculate dimensionality for all random samples
-        dimensionality_guess = int(np.min((_dim_curve(cell_sample_num, *dim_curve_params)+200, *array_subsets[0].shape)))
+        dimensionality_guess = int(np.min((_dim_curve(cell_sample_num, *dim_curve_params)+300, *array_subsets[0].shape)))
         dimensionality_bootstrap = []
         if use_multiprocessing:
             cutoff_array = np.ones(pca_repetitions)*cum_var_cutoff
@@ -120,6 +134,8 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
         dimensionality_means[i] = np.mean(dimensionality_bootstrap)
         dimensionality_lower_ci[i] = np.percentile(dimensionality_bootstrap, 5)
         dimensionality_upper_ci[i] = np.percentile(dimensionality_bootstrap, 95)
+        if return_dict:
+            full_data_dict[str(cell_sample_num)] = dimensionality_bootstrap
 
     # Unshuffle arrays
     sorted_idx = np.argsort(shuff_cell_sample_nums)
@@ -127,6 +143,8 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     dimensionality_lower_ci = dimensionality_lower_ci[sorted_idx]
     dimensionality_upper_ci = dimensionality_upper_ci[sorted_idx]
 
+    if return_dict:
+        return full_data_dict
     return dimensionality_means, dimensionality_lower_ci, dimensionality_upper_ci
 
 
@@ -175,11 +193,44 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
         dimensionality = get_pca_dimensionality(array, cutoff, new_n_components, covariance, False ,counter+1)
     else:
         dimensionality = np.where(cum_var_thresholded)[0][0]
-    return dimensionality
+    return int(dimensionality)
 
 
-def _dim_curve(data,a,b,c):
-    return (a-b)*np.exp(-data/c)+b
+def save_dim_data(params, data_dict):
+
+    data_md5 = hashlib.md5(json.dumps(params, sort_keys=True).encode('utf-8')).hexdigest()
+    filename = f'Data/{data_md5}.json'
+    if path.exists(filename):
+        print('Param datafile found! Adding data...')
+        with open(filename, 'r+') as jf:
+            old_data_dict = json.load(jf)
+            for key in data_dict.keys():
+                if key in old_data_dict:
+                    old_data_dict[key] = old_data_dict[key] + list(data_dict[key])
+                else:
+                    old_data_dict[key] = list(data_dict[key])
+        jf.close()
+        with open(filename, 'w') as jf:
+            json.dump(old_data_dict, jf, sort_keys=True, indent=4)
+    else:
+        print('Params datafile not found, creating new file...')
+        with open(filename, 'w') as jf:
+            data_dict['params'] = params
+            json.dump(data_dict, jf, sort_keys=True, indent=4)
+    return
+
+
+def fetch_dim_data(params):
+    
+    data_md5 = hashlib.md5(json.dumps(params, sort_keys=True).encode('utf-8')).hexdigest()
+    filename = f'Data/{data_md5}.json'
+    if path.exists(filename):
+        with open(filename, 'r') as jf:
+            data_dict = json.load(jf)
+    else:
+        raise Exception(f'Error: File not found for given parameters.')
+    return data_dict
+
 
 def _dim_curve(data,a,b,c):
     return (a-b)*np.exp(-data/c)+b
