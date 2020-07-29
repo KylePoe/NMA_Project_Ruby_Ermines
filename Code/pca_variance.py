@@ -75,7 +75,7 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     sample_func = sampling_func_lookup[sampling_method]
     
     if np.any(np.array(cell_sample_nums) > neurons.shape[1]):
-        raise Exeception('Warning: More samples than neurons available requested!')
+        raise Exception('Warning: More samples than neurons available requested!')
     
     # This is shuffled to better estimate runtime in TQDM
     shuff_cell_sample_nums = np.copy(cell_sample_nums)
@@ -91,23 +91,25 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
     if z_transform_data:
         Z = zscore(Z, axis=0)
     Z = np.nan_to_num(Z)
+    
+    # Filter dataset to only include depth range if sample_depths_point used
     if sampling_method == 'sample_depths_point':
         upper,lower = (np.max(depth_range), np.min(depth_range))
-        mask = np.where(np.logical_and(neuron_locs[2] <= upper, neuron_locs >= lower))[1]
+        mask = np.where(np.logical_and(neuron_locs[2,:] <= upper, neuron_locs[2,:] >= lower))[0]
         Z = Z[:, mask]
-        neuron_locs = np.array(ori_dat['xyz'])[:,mask]
+        neuron_locs = np.array(neuron_locs)[:,mask]
     
     # Determine curve for dimensionality guess
-    print('Guessing dimensionality curve...')
     dim_sample_nums = [1000, 2000, 3000]
     dim_sample_results = []
     for dim_sample_num in dim_sample_nums:
-        sample_neurons = sampling_func_lookup['sample_uniform'](Z, dim_sample_num, depth_range=depth_range, **kwargs)
+        sample_neurons = sampling_func_lookup['sample_uniform'](neurons=Z, n=dim_sample_num, depth_range=depth_range, **kwargs)
         guess_dimensionality = int(np.min(sample_neurons.shape)*0.75)
         dim_sample_results.append(get_pca_dimensionality(sample_neurons, cum_var_cutoff, guess_dimensionality))
     dim_curve_params, _ = curve_fit(_dim_curve, dim_sample_nums, dim_sample_results, p0=(1, 1, 4000), maxfev=10000)
 
     full_data_dict = {}
+    full_data_dict['neuron_nums'] = {}
     for i,cell_sample_num in tqdm(enumerate(shuff_cell_sample_nums), total=len(shuff_cell_sample_nums)):
 
         # Create list of smaller arrays to pass to multiprocessing function
@@ -136,6 +138,10 @@ def get_variance_explained_curve(neurons, cell_sample_nums, cum_var_cutoff=0.8, 
         dimensionality_upper_ci[i] = np.percentile(dimensionality_bootstrap, 95)
         if return_dict:
             full_data_dict[str(cell_sample_num)] = dimensionality_bootstrap
+            true_num_sampled = [t.shape[1] for t in array_subsets]
+            if len(np.unique(true_num_sampled)) > 1:
+                raise Exception(f'Warning: Number of neurons sampled is not consistent! Results: {true_num_sampled}')
+            full_data_dict['neuron_nums'][str(cell_sample_num)] = np.mean(true_num_sampled)
 
     # Unshuffle arrays
     sorted_idx = np.argsort(shuff_cell_sample_nums)
@@ -178,7 +184,6 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
     
     """
     
-    print(n_components, counter)
     if n_components is None:
         n_components = np.min(array.shape)
     if z_transform_data:
@@ -192,7 +197,7 @@ def get_pca_dimensionality(array, cutoff, n_components=None, covariance=None, z_
         new_n_components = int(np.min((n_components+np.ceil(n_components*0.75), np.min(array.shape))))
         dimensionality = get_pca_dimensionality(array, cutoff, new_n_components, covariance, False ,counter+1)
     else:
-        dimensionality = np.where(cum_var_thresholded)[0][0]
+        dimensionality = np.where(cum_var_thresholded)[0][0]+1
     return int(dimensionality)
 
 
@@ -201,7 +206,7 @@ def save_dim_data(params, data_dict):
     data_md5 = hashlib.md5(json.dumps(params, sort_keys=True).encode('utf-8')).hexdigest()
     filename = f'Data/{data_md5}.json'
     if path.exists(filename):
-        print('Param datafile found! Adding data...')
+        #print('Param datafile found! Adding data...')
         with open(filename, 'r+') as jf:
             old_data_dict = json.load(jf)
             for key in data_dict.keys():
@@ -213,7 +218,7 @@ def save_dim_data(params, data_dict):
         with open(filename, 'w') as jf:
             json.dump(old_data_dict, jf, sort_keys=True, indent=4)
     else:
-        print('Params datafile not found, creating new file...')
+        #print('Params datafile not found, creating new file...')
         with open(filename, 'w') as jf:
             data_dict['params'] = params
             json.dump(data_dict, jf, sort_keys=True, indent=4)

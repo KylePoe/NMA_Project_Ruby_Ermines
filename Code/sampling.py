@@ -153,8 +153,11 @@ def sample_around_point(neurons, neuron_locs, n=None, p=None, point=None, x=None
 
     if nn > sum(probs != 0):
         if expand:
-            return sample_around_point(neurons, neuron_locs, n=n, p=p, point=point, x=x, 
-                                       y=y, z=z, v=v, cov=cov*1.5, expand=expand, **kwargs)
+            if nn < neurons.shape[1]:
+                return sample_around_point(neurons, neuron_locs, n=n, p=p, point=point, x=x, 
+                                           y=y, z=z, v=v, cov=cov*1.5, expand=expand, **kwargs)
+            else:
+                return neurons
         else:
             print(f'WARNING! Asking for too many neurons. Asked for {nn}, max available {sum(probs != 0)}')
             nn = sum(probs != 0)
