@@ -1,5 +1,5 @@
 import numpy as np
-from Code import sampling as spl
+from Code import sampling as sa
 from Code.visualization import scatterplot
 from sklearn.decomposition import PCA
 from scipy.stats import zscore
@@ -42,22 +42,20 @@ def split_train_and_test(data, t=None, control=False):
 
     Args:
         data: samples by parameters
-        t: total time points to sample (will be divided into two for train and test)
+        t: time points to sample for the train and test set
         control: Bool of whether or not you want to return control data
 
     Returns:
       training and testing data, plus an optional control data which is randomly shuffled training data.
     """
 
-    if t is None:
-        t = data.shape[0]
+    if t is None or t > data.shape[0]:
+        t = data.shape[0]//2
 
-    # Pick a random half of the time point range for the training range and the test range:
-    range1 = np.arange(t // 2)
-    range2 = range1 + t // 2
-    ranges = np.array([range1, range2])
-    train_range, test_range = np.random.permutation(ranges)
-
+    # Pick a random selection of the time point range for the training range and the test range:
+    ranges = np.random.choice(np.arange(data.shape[0]), size=t*2, replace=False)
+    train_range = ranges[:t]
+    test_range = ranges[t:]
     if control:
         return data[train_range], data[test_range], np.random.permutation(data[train_range].T).T
     else:
@@ -119,35 +117,90 @@ def scree(y, fig_title, labels):
     plt.show()
 
 
-# Run the following to sample random neurons from different depths and cross-validate the PCA model
-dat = load.load_orientations()
-neurons = dat['sresp'].T
-neuron_locs = dat['xyz']
+def get_test_var(model, X_test):
+    return r2_score(X_test, model.inverse_transform(model.transform(X_test)), multioutput='variance_weighted')
 
-# Z score the data
-neurons = zscore(neurons, axis=0)
 
-# Set parameters
-n = 10  # number of neurons to sample
-t = 200  # number of time points to sample (will be divided into 2 for training and test)
-n_components = None  # number of components for PCA; if none it will be auto-set
-sup_range = (0, -300)  # superficial depth range; maximum of 12392 neurons for orientations data
-dep_range = (-301, -600)  # deep depth range; maximum of 11197 neurons for orientations data
+def test_vs_train_variance(neurons, repeats, t=None, n=None, n_set=None, t_set=None, variance_explained=0.8):
+    """
+    Compares the test and training set variance for the dimensions found with the training set.
+    Can fix either the number of time points or the number of neurons.
+    Neurons are randomly sampled uniformly.
 
-# select neurons in the depth range
-sup_data = spl.sample_depth_range(neurons, neuron_locs, sup_range, n=n)
-dep_data = spl.sample_depth_range(neurons, neuron_locs, dep_range, n=n)
+    Args:
+        neurons: time points by neurons (make sure it's z-scored!)
+        t: time points to sample for training and test set
+        n: number of neurons to sample
+        repeats: number of repeats for each n in n_set, or t in t_set
+        n_set: list of number of neurons to iterate over
+        t_set: list of number of time points to iterate over (will be divided into two for train and test)
+        variance_explained: desired variance explained for the test set
 
-# split into training and test data
-sup_train, sup_test = split_train_and_test(sup_data, t=t)
-dep_train, dep_test = split_train_and_test(dep_data, t=t)
+    Returns:
+        np.array with columns:
+        0: Number of time points
+        1: Number of neurons
+        2: Number of dimensions that describe the test set with variance_explained
+        3: Test set cumulative variance explained for the number of dimensions in the PCA model
+        4: Training set cumulative variance explained for the number of dimensions in the PCA model"""
 
-# get cumulative variance explained
-sup_train_var, sup_test_var = train_and_test_scree(sup_train, sup_test, n_components=n_components)
-dep_train_var, dep_test_var = train_and_test_scree(dep_train, dep_test, n_components=n_components)
+    if n_set is not None:
+        set = n_set
+    else:
+        set = t_set
 
-# plot the data
-y = np.array([sup_train_var, sup_test_var, dep_train_var, dep_test_var])
-labels = ['Superficial training', 'Superficial test', 'Deep training', 'Deep test']
-scree(y, f'Orientations Data, {t // 2} time points', labels)
-print(f'time points: {t}; neurons: {n}')
+    rows = len(set) * repeats
+    out = np.empty((rows, 5)) #columns are number of time points, number of neurons, dimension, train_var, test_var
+
+    k = 0
+    for s in set:
+        if n_set is not None:
+            n = s
+        else:
+            t = s
+        for _ in range(3):
+            data = sa.sample_uniform(neurons, n=n)
+            train, test = split_train_and_test(data, t=t)
+            model = PCA(n_components=variance_explained).fit(train)
+            out[k, 0] = t
+            out[k, 1] = n
+            out[k, 2] = model.n_components_
+            out[k, 3] = np.cumsum(model.explained_variance_ratio_)[-1]
+            out[k, 4] = get_test_var(model, test)
+            k += 1
+    return out
+
+
+if __name__ == '__main__':
+    # Run the following to sample random neurons from different depths and cross-validate the PCA model
+    dat = load.load_orientations()
+    neurons = dat['sresp'].T
+    neuron_locs = dat['xyz']
+
+    # Z score the data
+    neurons = zscore(neurons, axis=0)
+
+    # Set parameters
+    n = 10  # number of neurons to sample
+    t = 200  # number of time points to sample (will be divided into 2 for training and test)
+    n_components = None  # number of components for PCA; if none it will be auto-set
+    sup_range = (0, -300)  # superficial depth range; maximum of 12392 neurons for orientations data
+    dep_range = (-301, -600)  # deep depth range; maximum of 11197 neurons for orientations data
+
+    # select neurons in the depth range
+    sup_data = sa.sample_depth_range(neurons, neuron_locs, sup_range, n=n)
+    dep_data = sa.sample_depth_range(neurons, neuron_locs, dep_range, n=n)
+
+    # split into training and test data
+    sup_train, sup_test = split_train_and_test(sup_data, t=t)
+    dep_train, dep_test = split_train_and_test(dep_data, t=t)
+
+    # get cumulative variance explained
+    sup_train_var, sup_test_var = train_and_test_scree(sup_train, sup_test, n_components=n_components)
+    dep_train_var, dep_test_var = train_and_test_scree(dep_train, dep_test, n_components=n_components)
+
+    # plot the data
+    y = np.array([sup_train_var, sup_test_var, dep_train_var, dep_test_var])
+    labels = ['Superficial training', 'Superficial test', 'Deep training', 'Deep test']
+    scree(y, f'Orientations Data, {t} time points', labels)
+    print(f'time points: {t}; neurons: {n}')
