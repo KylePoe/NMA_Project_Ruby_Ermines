@@ -158,7 +158,7 @@ def test_vs_train_variance(neurons, repeats, t=None, n=None, n_set=None, t_set=N
             n = s
         else:
             t = s
-        for _ in range(3):
+        for _ in range(repeats):
             data = sa.sample_uniform(neurons, n=n)
             train, test = split_train_and_test(data, t=t)
             model = PCA(n_components=variance_explained).fit(train)
@@ -169,6 +169,99 @@ def test_vs_train_variance(neurons, repeats, t=None, n=None, n_set=None, t_set=N
             out[k, 4] = get_test_var(model, test)
             k += 1
     return out
+
+
+def get_test_dimension(neurons, t=None, n=None, n_set=None, t_set=None, repeats=3, threshold=0.8):
+    """
+    Compares the dimensions require to explain the threshold variance of the test set.
+
+    Args:
+        neurons: time points by neurons (make sure it's z-scored!)
+        t: time points to sample for training and test set
+        n: number of neurons to sample
+        repeats: number of repeats for each n in n_set, or t in t_set
+        n_set: list of number of neurons to iterate over
+        t_set: list of number of time points to iterate over (will be divided into two for train and test)
+        threshold: desired variance explained
+
+    Returns:
+        dict with indices:
+        'n': Number of neurons
+        't': Number of time points
+        'train_dim': Number of dimensions that describe the training set with threshold variance
+        'test_dim': Number of dimensions (from trained PCA model) that describe the test set with threshold variance
+        'train_var': Training set cumulative variance explained for the number of dimensions in the PCA model
+        'test_var': Test set cumulative variance explained for the number of dimensions in the PCA model"""
+    if n_set is not None:
+        set = n_set
+    else:
+        set = t_set
+
+    rows = repeats*len(set)
+    keys = ['n', 't', 'train_dim', 'test_dim', 'train_var', 'test_var']
+    out = {key: np.empty(rows) for key in keys}
+    i = 0
+    for s in set:
+        if n_set is not None:
+            n = s
+        else:
+            t = s
+        for _ in range(repeats):
+            select_neurons = sa.sample_uniform(neurons, n)
+            train, test = split_train_and_test(select_neurons, t=t)
+            model = PCA().fit(train)
+            total_train_var = np.cumsum(model.explained_variance_ratio_)
+            train_dim = np.where(total_train_var > threshold)[0][0] + 1
+            train_var = total_train_var[train_dim - 1]
+            result = np.zeros(model.n_components_)
+            diff_mean_norm = np.linalg.norm(test - model.mean_)
+            test_trans = model.transform(test)
+            for ii in range(train_dim-1, model.n_components_):
+                test_trans_ii = np.zeros_like(test_trans)
+                test_trans_ii[:, :ii+1] = test_trans[:, :ii+1]
+                test_approx_ii = model.inverse_transform(test_trans_ii)
+                result[ii] = 1 - (np.linalg.norm(test_approx_ii - test) /
+                                      diff_mean_norm) ** 2
+                if result[ii] > threshold:
+                    test_dim = ii + 1
+                    break
+            if 'test_dim' not in locals():
+                test_dim = 0
+                print('test_dim was set to 0 because not enough components were fit.')
+            out['n'][i] = n
+            out['t'][i] = t
+            out['train_dim'][i] = train_dim
+            out['test_dim'][i] = test_dim
+            out['train_var'][i] = train_var
+            out['test_var'][i] = result[train_dim - 1]
+            i += 1
+    return out
+
+
+def run_get_test_dimension(loading_function):
+
+    dat = loading_function()
+    neurons = dat['sresp'].T
+    neurons = zscore(neurons, axis=0)
+    all_t = neurons.shape[0]
+    all_n = neurons.shape[1]
+
+    # parameters for running over different numbers of time points:
+    n = 10000 # to keep consistent between spontaneous and orientations
+    t_set = [100, 200, 400, 800, 1600, all_t//4, all_t//2]
+
+    # parameters for running over different numbers of neurons:
+    t = 4598//2 # to keep consistent between spontaneous and orientations
+    n_set = [100, 200, 400, 800, 1600, all_n//4, all_n//2, all_n]
+
+    # run over time points:
+    over_time = get_test_dimension(neurons, n=n, t_set=t_set)
+
+    # run over neurons:
+    over_neurons = get_test_dimension(neurons, t=t, n_set=n_set)
+
+    return over_time, over_neurons
+
 
 
 if __name__ == '__main__':
@@ -182,7 +275,7 @@ if __name__ == '__main__':
 
     # Set parameters
     n = 10  # number of neurons to sample
-    t = 200  # number of time points to sample (will be divided into 2 for training and test)
+    t = 200  # number of time points to sample
     n_components = None  # number of components for PCA; if none it will be auto-set
     sup_range = (0, -300)  # superficial depth range; maximum of 12392 neurons for orientations data
     dep_range = (-301, -600)  # deep depth range; maximum of 11197 neurons for orientations data
